@@ -1,0 +1,27 @@
+const express = require("express")
+const cors = require("cors")
+const app = express()
+require('dotenv').config()
+const { DB } = require("./sql") 
+const userRouter = require("./routes/user.route")
+const loanRouter = require("./routes/loan.route")
+const savingsRouter = require("./routes/savings.route")
+
+
+
+app.use(cors())
+app.use(express.json())
+app.use(express.urlencoded({extended:true}))
+
+
+
+const PORT = process.env.PORT || 9000
+
+
+app.use("/", userRouter)
+app.use("/", loanRouter)
+app.use("/", savingsRouter)
+
+
+
+app.listen(PORT, ()=> console.log(`server running on port: ${PORT}`))
