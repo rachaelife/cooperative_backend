@@ -37,7 +37,12 @@ userRouter.post("/new/user",
 
     userRouter.delete("/delete/:user_id", deleteuser)
 
-    userRouter.post("/user",loginUser)
+    userRouter.post("/user",
+         [
+       body('email_username').notEmpty().withMessage('Email or Username is required'),
+       body('password').notEmpty().withMessage('Password is required')
+   ], 
+        loginUser)
 
 
 

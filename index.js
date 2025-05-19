@@ -6,6 +6,9 @@ const { DB } = require("./sql")
 const userRouter = require("./routes/user.route")
 const loanRouter = require("./routes/loan.route")
 const savingsRouter = require("./routes/savings.route")
+const sharesRouter = require("./routes/shares.route")
+const loan_applicationRouter = require("./routes/loanapplication.route")
+const adminRouter = require("./routes/admin.route")
 
 
 
@@ -21,6 +24,9 @@ const PORT = process.env.PORT || 9000
 app.use("/", userRouter)
 app.use("/", loanRouter)
 app.use("/", savingsRouter)
+app.use("/", sharesRouter)
+app.use("/", loan_applicationRouter)
+app.use("/", adminRouter)
 
 
 
