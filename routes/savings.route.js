@@ -1,7 +1,7 @@
 const express = require("express")
 const { body , param} = require("express-validator")
 
-const { createnewsavings, getAllsavings, deletesavings, updatesavings, getsavingstype, getbuilding, getdevelopment, getshares, getsavings } = require("../controller/savings.controller");
+const { createnewsavings, getAllsavings, deletesavings, updatesavings, getsavingstype, getbuilding, getdevelopment, getshares, getsavings, getUserSavings } = require("../controller/savings.controller");
 
 
 const savingsRouter = express.Router()
@@ -33,6 +33,7 @@ savingsRouter.post("/new/savings",
     savingsRouter.get("/development", getdevelopment)
 
     savingsRouter.get("/savings", getsavings)
+    savingsRouter.get("/user/savings/:id", getUserSavings)
 
     savingsRouter.delete("/delete/savings/:savings_id",deletesavings)
 

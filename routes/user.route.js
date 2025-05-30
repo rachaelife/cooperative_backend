@@ -1,5 +1,5 @@
 const express = require("express")
-const { createnewuser, allusers, updateusers, deleteuser, loginUser } = require("../controller/user.controller")
+const { createnewuser, allusers, updateusers, deleteuser, loginUser, getuser } = require("../controller/user.controller")
 const {body, param} = require("express-validator")
 
 
@@ -21,14 +21,17 @@ userRouter.post("/new/user",
     createnewuser)
 
 
-
+userRouter.get("/single/user/:user_id",getuser)
 
 
     userRouter.patch("/update/user/:user_id",
         [
             body("fullname").notEmpty().withMessage("fullname is required"),
+            body("gender").notEmpty().withMessage("gender is required"),
             body("mobile").isNumeric().isLength({min:11, max:14}).withMessage("phone number must not be less than 11"),
             body("email").notEmpty().withMessage("invalid email"),
+            body("address").notEmpty().withMessage("address is required"),
+            body("referral").notEmpty().withMessage("referral is required"),
             param("user_id").notEmpty().withMessage("invalid parameter").isString().withMessage("Invalid ID")
         ],
         updateusers)

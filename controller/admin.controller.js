@@ -55,6 +55,7 @@ module.exports.loginadmin = (req, res) => {
   const errorResponse = validationResult(req);
 
   const { email_username, pass_word } = req.body;
+  console.log({ email_username, pass_word })
 
   try {
     if (!errorResponse.isEmpty()) {
@@ -98,9 +99,11 @@ module.exports.alladmin = (req, res) => {
   try {
     
 
-      DB.query("SELECT * FROM admin ORDER BY createdAt DESC",(e, admin)=>{
+      DB.query("SELECT * FROM admin",(e, admin)=>{
             if(e){
                 res.status(500).json({message: "Error fetching admins"})
+
+                 console.error("DB query error:", e);
             }else{
                 res.status(200).json({message: admin})
             }
@@ -112,14 +115,14 @@ module.exports.alladmin = (req, res) => {
 
 module.exports.updateadmin = (req, res)=>{
   const {admin_id} = req.params
-  const { username, email} = req.body
+  const { username, email,admin_role, mobile} = req.body
   const errrorResponse = validationResult(req)
 
   try {
     if (!errrorResponse.isEmpty()){
       return res.status(400).json({error: errrorResponse.array()})
     }else{
-      DB.query('UPDATE admin SET username = ?,  email = ? WHERE admin_id = ?', [username,email,admin_id], (e, _)=>{
+      DB.query('UPDATE admin SET username = ?,  email = ?,admin_role = ?, mobile= ? WHERE admin_id = ?', [username,email,admin_role,mobile,admin_id], (e, _)=>{
         if(e){
           res.status(500).json({message: "can't update"})
         }else{
@@ -127,6 +130,47 @@ module.exports.updateadmin = (req, res)=>{
         }
       })
     }
+  } catch (error) {
+     res.status(500).json({message: error.message ?? "something went wrong"})
+  }
+}
+
+
+// module.exports.deleteAdmin = (req, res) => {
+//   const id = req.params.id;
+//   DB.query("DELETE FROM admin WHERE id = ?", [id], (err, _) => {
+//     if (err) {
+//       return res.status(500).json({ message: "Failed to delete admin" });
+//     }
+//     res.status(200).json({ message: "Admin deleted successfully" });
+//   });
+// };
+
+
+module.exports.deleteAdmin= (req, res) =>{
+  const { admin_id } = req.params
+
+  try {
+    if (!admin_id){
+      return res.status(400).json({ message: "admin ID is required"})
+    }
+
+    DB.query("SELECT * FROM admin WHERE admin_id = ?", [admin_id], (e, admin) =>{
+      if (e){
+     return   res.status(500).json({message: "error checking admin"})
+      }else {
+      }if (admin.length === 0 ){
+        return res.status(404).json({message: "admin not found"})
+      }
+
+      DB.query("DELETE FROM admin WHERE admin_id = ?", [admin_id], (er,_) =>{
+        if(er){
+          res.status(500).json({message: "unable to delete admin"})
+        }else{
+          res.status(200).json({message: "admin deleted successfully"})
+        }
+      })
+    })
   } catch (error) {
      res.status(500).json({message: error.message ?? "something went wrong"})
   }

@@ -56,16 +56,36 @@ module.exports.allusers = (req, res) => {
   }
 }
 
+module.exports.getuser = (req, res) => {
+     const errrorResponse = validationResult(req);
+     const { user_id } = req.params
+
+     try {
+
+          
+      DB.query("SELECT * FROM users WHERE USER_id = ?", [user_id], (er, user) =>{
+        if(er){
+          res.status(500).json({message: "unable to SELECT user"})
+        }else{
+          res.status(200).json({message: user})
+        }
+      })
+
+     } catch (error) {
+      
+     }
+}
+
 module.exports.updateusers = (req, res)=>{
   const {user_id} = req.params
-  const {fullname, mobile, email} = req.body
+  const {fullname,gender, mobile, email,address,referral} = req.body
   const errrorResponse = validationResult(req)
 
   try {
     if (!errrorResponse.isEmpty()){
       return res.status(400).json({error: errrorResponse.array()})
     }else{
-      DB.query('UPDATE users SET fullname = ?, mobile = ?, email = ? WHERE user_id = ?', [fullname,mobile,email,user_id], (e, _)=>{
+      DB.query('UPDATE users SET fullname = ?,gender = ?, mobile = ?, email = ?, address =?,referral=? WHERE user_id = ?', [fullname,gender,mobile,email,address,referral,user_id], (e, _)=>{
         if(e){
           res.status(500).json({message: "can't update"})
         }else{
@@ -81,7 +101,7 @@ module.exports.updateusers = (req, res)=>{
 module.exports.deleteuser = (req, res) =>{
   const { user_id } = req.params
 
-  try {
+  
     if (!user_id){
       return res.status(400).json({ message: "user ID is required"})
     }
@@ -89,23 +109,21 @@ module.exports.deleteuser = (req, res) =>{
     DB.query("SELECT * FROM users WHERE user_id = ?", [user_id], (e, user) =>{
       if (e){
      return   res.status(500).json({message: "error checking user"})
-      }else {
-      }if (user.length === 0 ){
+      }
+      if (user.length === 0 ){
         return res.status(404).json({message: "user not found"})
       }
 
       DB.query("DELETE FROM users WHERE USER_id = ?", [user_id], (er,_) =>{
         if(er){
-          res.status(500).json({message: "unable to delete user"})
+        return  res.status(500).json({message: "unable to delete user"})
         }else{
-          res.status(200).json({message: "user deleted successfully"})
+        return  res.status(200).json({message: "user deleted successfully"})
         }
       })
     })
-  } catch (error) {
-     res.status(500).json({message: error.message ?? "something went wrong"})
   }
-}
+
 
 module.exports.loginUser = (req,res) =>{
 
