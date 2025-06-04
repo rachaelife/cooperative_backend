@@ -1,5 +1,5 @@
 const express = require("express")
-const { createnewuser, allusers, updateusers, deleteuser, loginUser, getuser } = require("../controller/user.controller")
+const { createnewuser, allusers, updateusers, deleteuser, loginUser, getuser, getTotalusers } = require("../controller/user.controller")
 const {body, param} = require("express-validator")
 
 
@@ -46,6 +46,9 @@ userRouter.get("/single/user/:user_id",getuser)
        body('password').notEmpty().withMessage('Password is required')
    ], 
         loginUser)
+
+
+        userRouter.get("/all/users", getTotalusers)
 
 
 

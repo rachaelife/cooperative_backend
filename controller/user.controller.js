@@ -158,3 +158,19 @@ module.exports.loginUser = (req,res) =>{
     
   }
 }
+
+module.exports.getTotalusers = (req, res) => {
+  try {
+    DB.query("SELECT COUNT(*) AS totalusers FROM users", (err, result) => {
+      if (err) {
+        console.log(err)
+        res.status(500).json({ message: "Can't fetch total members" });
+      } else {
+        res.status(200).json({ message: result[0].totalusers });
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+

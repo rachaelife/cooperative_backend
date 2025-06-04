@@ -4,16 +4,25 @@ require("dotenv").config;
 
 module.exports.createnewsavings = (req, res) => {
   const errrorResponse = validationResult(req);
+  
 
   const { user_id, amount, month_paid, payment_type, savings_type } = req.body;
 
   console.log({ user_id, amount, month_paid, payment_type, savings_type })
 
   console.log(errrorResponse);
+  
+  
   try {
     if (!errrorResponse.isEmpty()) {
       res.status(400).json({ message: errrorResponse.errors[0].msg });
     } else {
+
+      const allowedTypes = ["shares", "savings", "building", "development"];
+      if (!allowedTypes.includes(savings_type)) {
+      return res.status(400).json({ message: "Invalid savings_type" });
+        }
+
       DB.query(
         "INSERT INTO savings(user_id, amount, month_paid, payment_type,savings_type) VALUES (?,?,?,?,?)",
         [user_id, amount, month_paid, payment_type,savings_type],
@@ -32,19 +41,26 @@ module.exports.createnewsavings = (req, res) => {
   }
 };
 
-module.exports.getAllsavings =(req, res) =>{
-    try {
-        DB.query("SELECT * FROM savings", (err, savings) =>{
-            if(err){
-               res.status(500).json({message: "cant fetch savings"})
-            }else{
-                res.status(200).json({message: savings})
-            }
-        })
-    } catch (error) {
-        res.status(500).json({message: error.message ?? "something went wrong"})
-    }
-}
+module.exports.getAllsavings = (req, res) => {
+  try {
+    DB.query(
+      `SELECT savings.*, users.fullname, users.gender, users.mobile 
+       FROM savings 
+       JOIN users ON savings.user_id = users.user_id 
+       ORDER BY savings.createdAt DESC`,
+      (err, results) => {
+        if (err) {
+          console.error("DB error:", err);
+          return res.status(500).json({ message: "Can't fetch savings" });
+        }
+        res.status(200).json({ data: results });
+      }
+    );
+  } catch (error) {
+    res.status(500).json({ message: error.message ?? "Something went wrong" });
+  }
+};
+
 
 module.exports.getshares = (req,res)=>{
    
@@ -65,8 +81,8 @@ module.exports.getshares = (req,res)=>{
 module.exports.getbuilding = (req,res)=>{
    
   try {
-    DB.query("SELECT * FROM savings WHERE savings_type = ?",["building"], (e,savings_type) =>{
-      if(e){
+     DB.query("SELECT savings.*, users.fullname, users.gender, users.mobile FROM savings JOIN users ON savings.user_id = users.user_id WHERE savings_type = ? ORDER BY createdAt DESC",["building"], (er,savings_type) =>{
+      if(er){
         res.status(500).json({message: "can't fetch savings_type"})
       }else{
         res.status(200).json({message: savings_type})
@@ -80,7 +96,7 @@ module.exports.getbuilding = (req,res)=>{
 module.exports.getdevelopment = (req,res)=>{
    
   try {
-    DB.query("SELECT * FROM savings WHERE savings_type = ?",["development"], (e,savings_type) =>{
+       DB.query("SELECT savings.*, users.fullname, users.gender, users.mobile FROM savings JOIN users ON savings.user_id = users.user_id WHERE savings_type = ? ORDER BY createdAt DESC",["development"], (e,savings_type) =>{
       if(e){
         res.status(500).json({message: "can't fetch savings_type"})
       }else{
@@ -90,7 +106,7 @@ module.exports.getdevelopment = (req,res)=>{
   } catch (error) {
      res.status(500).json({message: error.message ?? "something went wrong"})
   }
-}
+};
 
 module.exports.getsavings = (req,res)=>{
    
@@ -105,7 +121,7 @@ module.exports.getsavings = (req,res)=>{
   } catch (error) {
      res.status(500).json({message: error.message ?? "something went wrong"})
   }
-}
+};
 
 
 module.exports.getUserSavings = (req, res)=>{
@@ -186,6 +202,83 @@ module.exports.updatesavings = (req, res)=>{
     }
   } catch (error) {
      res.status(500).json({message: error.message ?? "something went wrong"})
+  }
+}
+
+module.exports.getTotalDev = (req, res)=>{
+
+  const {id} = req.params
+
+  try {
+
+     DB.query("SELECT SUM(amount) AS total FROM savings WHERE savings_type = ?",["development"], (e,development) =>{
+      if(e){
+        res.status(500).json({message: "can't fetch savings_type"})
+      }else{
+            res.status(200).json({message: development})
+      }
+    })
+    
+  } catch (error) {
+    res.status(500).json({message: error.message})
+  }
+};
+
+module.exports.getTotalsavings = (req, res)=>{
+
+  const {id} = req.params
+
+  try {
+
+     DB.query("SELECT SUM(amount) AS total FROM savings WHERE savings_type = ?",["savings"], (e,savings) =>{
+      if(e){
+        res.status(500).json({message: "can't fetch savings_type"})
+      }else{
+            res.status(200).json({message: savings})
+      }
+    })
+    
+  } catch (error) {
+    res.status(500).json({message: error.message})
+  }
+};
+
+
+module.exports.getTotalbuilding = (req, res)=>{
+
+  const {id} = req.params
+
+  try {
+
+     DB.query("SELECT SUM(amount) AS total FROM savings WHERE savings_type = ?",["building"], (e,building) =>{
+      if(e){
+        res.status(500).json({message: "can't fetch savings_type"})
+      }else{
+            res.status(200).json({message: building})
+      }
+    })
+    
+  } catch (error) {
+    res.status(500).json({message: error.message})
+  }
+};
+
+module.exports.getTotalshares = (req, res)=>{
+
+  const {id} = req.params
+
+  try {
+
+     DB.query("SELECT SUM(amount) AS total FROM savings WHERE savings_type = ?",["shares"], (e,shares) =>{
+      if(e){
+        res.status(500).json({message: "can't fetch savings_type"})
+      }else{
+            res.status(200).json({message: shares})
+      }
+    })
+    
+  } catch (error) {
+    res.status(500).json({message: error.message})
   }
 }
 

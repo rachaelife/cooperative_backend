@@ -15,7 +15,7 @@ sharesRouter.post("/new/shares",
     ],
     createnewshares)
 
-    sharesRouter.get("/shares",getAllshares)
+    // sharesRouter.get("/shares",getAllshares)
     
 
     sharesRouter.delete("/delete/shares/:shares_id",deleteshares)
