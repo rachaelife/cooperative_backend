@@ -1,176 +1,1 @@
-const { validationResult } = require("express-validator");
-const bcrypt = require("bcryptjs")
-const { DB } = require("../sql");
-const jwt = require("jsonwebtoken")
-require("dotenv").config()
-
-module.exports.createnewuser = (req, res) => {
-  const { fullname, gender, mobile, email, address, referral } = req.body;
-
-  const errrorResponse = validationResult(req);
-
-  try {
-    if (!errrorResponse.isEmpty()) {
-      res.status(400).json({ message: errrorResponse.errors[0].msg });
-    } else {
-      DB.query("SELECT * FROM users WHERE mobile =? OR email = ?", [mobile, email], (e, user) => {
-        if (e) {
-          res.status(500).json({ message: "Error fetching data" });
-        } else {
-          if (user.length > 0) {
-            res.status(400).json({ message: "Mobile NO. already exist" });
-          } else {
-            DB.query(
-              "INSERT INTO users(fullname, gender, mobile, email, address, referral) VALUES(?,?,?,?,?,?)",
-              [fullname, gender, mobile, email, address, referral],
-              (er, _) => {
-                if (er) {
-                  res.status(500).json({ message: "Unable to add new user" });
-                } else {
-                  res.status(200).json({ message: "New member created" });
-                }
-              }
-            );
-          }
-        }
-      });
-    }
-  } catch (error) {
-    res.status(500).json({ message: "Server Error" });
-  }
-};
-
-module.exports.allusers = (req, res) => {
-  try {
-    
-
-      DB.query("SELECT * FROM users ORDER BY createdAt DESC",(e, users)=>{
-            if(e){
-                res.status(500).json({message: "Error fetching users"})
-            }else{
-                res.status(200).json({message: users})
-            }
-        })
-  } catch (error) {
-     res.status(500).json({message: error.message ?? "something went wrong"})
-  }
-}
-
-module.exports.getuser = (req, res) => {
-     const errrorResponse = validationResult(req);
-     const { user_id } = req.params
-
-     try {
-
-          
-      DB.query("SELECT * FROM users WHERE USER_id = ?", [user_id], (er, user) =>{
-        if(er){
-          res.status(500).json({message: "unable to SELECT user"})
-        }else{
-          res.status(200).json({message: user})
-        }
-      })
-
-     } catch (error) {
-      
-     }
-}
-
-module.exports.updateusers = (req, res)=>{
-  const {user_id} = req.params
-  const {fullname,gender, mobile, email,address,referral} = req.body
-  const errrorResponse = validationResult(req)
-
-  try {
-    if (!errrorResponse.isEmpty()){
-      return res.status(400).json({error: errrorResponse.array()})
-    }else{
-      DB.query('UPDATE users SET fullname = ?,gender = ?, mobile = ?, email = ?, address =?,referral=? WHERE user_id = ?', [fullname,gender,mobile,email,address,referral,user_id], (e, _)=>{
-        if(e){
-          res.status(500).json({message: "can't update"})
-        }else{
-          res.status(200).json({message: "Your profile has been updated"})
-        }
-      })
-    }
-  } catch (error) {
-     res.status(500).json({message: error.message ?? "something went wrong"})
-  }
-}
-
-module.exports.deleteuser = (req, res) =>{
-  const { user_id } = req.params
-
-  
-    if (!user_id){
-      return res.status(400).json({ message: "user ID is required"})
-    }
-
-    DB.query("SELECT * FROM users WHERE user_id = ?", [user_id], (e, user) =>{
-      if (e){
-     return   res.status(500).json({message: "error checking user"})
-      }
-      if (user.length === 0 ){
-        return res.status(404).json({message: "user not found"})
-      }
-
-      DB.query("DELETE FROM users WHERE USER_id = ?", [user_id], (er,_) =>{
-        if(er){
-        return  res.status(500).json({message: "unable to delete user"})
-        }else{
-        return  res.status(200).json({message: "user deleted successfully"})
-        }
-      })
-    })
-  }
-
-
-module.exports.loginUser = (req,res) =>{
-
-  const errorResponse = validationResult(req)
-
-  const {email_mobile, password} = req.body
-
-  try {
-     if (!errorResponse.isEmpty()) {
-      res.status(400).json({ message: errorResponse.errors[0].msg });
-     }else{
-      DB.query("SELECT * FROM users WHERE email =? OR mobile = ?", [email_mobile, email_mobile], (e, user)=>{
-        if(e){
-          res.status(500).json({message: "unable to fetch user", error:e})
-        }else{
-            if(user.length > 0){
-                        const dbPassword = user[0].pass_word
-                        const matchPassword = bcrypt.compareSync(password, dbPassword)
-                        if(matchPassword){
-                            const token = jwt.sign({id: user[0].user_id}, process.env.JWT_SECRET, {expiresIn: "1d"})
-                            res.status(201).json({message:token})
-                        }else{
-                            res.status(400).json({message: "Invalid Email or Password"})
-                        }
-                    }else{
-                        res.status(400).json({message: "Invalid Email"})
-                    }
-        }
-      })
-     }
-  } catch (error) {
-    
-  }
-}
-
-module.exports.getTotalusers = (req, res) => {
-  try {
-    DB.query("SELECT COUNT(*) AS totalusers FROM users", (err, result) => {
-      if (err) {
-        console.log(err)
-        res.status(500).json({ message: "Can't fetch total members" });
-      } else {
-        res.status(200).json({ message: result[0].totalusers });
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
+const { validationResult } = require("express-validator");const bcrypt = require("bcryptjs")const { DB } = require("../sql");const jwt = require("jsonwebtoken")require("dotenv").config()module.exports.createnewuser = (req, res) => {  const { fullname, gender, mobile, email, address, referral } = req.body;  const errorResponse = validationResult(req);  try {    if (!errorResponse.isEmpty()) {      res.status(400).json({ message: errorResponse.errors[0].msg });    } else {      DB.query("SELECT * FROM users WHERE mobile =? OR email = ?", [mobile, email], (e, user) => {        if (e) {          res.status(500).json({ message: "Error fetching data" });        } else {          if (user.length > 0) {            res.status(400).json({ message: "Mobile NO. already exist" });          } else {            DB.query(              "INSERT INTO users(fullname, gender, mobile, email, address, referral) VALUES(?,?,?,?,?,?)",              [fullname, gender, mobile, email, address, referral],              (er, result) => {                if (er) {                  res.status(500).json({ message: "Unable to add new user" });                } else {                  res.status(200).json({ message: "New member created" });                }              }            );          }        }      });    }  } catch (error) {    res.status(500).json({ message: "Server Error" });  }};module.exports.allusers = (req, res) => {  try {    DB.query("SELECT * FROM users ORDER BY fullname ASC", (err, users) => {      if (err) {        res.status(500).json({ message: "can't fetch users" });      } else {        res.status(200).json({ message: users });      }    });  } catch (error) {    res.status(500).json({ message: error.message });  }};module.exports.getuser = (req, res) => {  const errorResponse = validationResult(req);  const { user_id } = req.params;  try {    if (!errorResponse.isEmpty()) {      return res.status(400).json({ message: errorResponse.errors[0].msg });    }    if (!user_id) {      return res.status(400).json({ message: "User ID is required" });    }    DB.query("SELECT * FROM users WHERE user_id = ?", [user_id], (er, user) => {      if (er) {        res.status(500).json({ message: "unable to SELECT user" });      } else {        if (user.length === 0) {          res.status(404).json({ message: "User not found" });        } else {          res.status(200).json({ message: user });        }      }    });  } catch (error) {    res.status(500).json({ message: error.message ?? "Something went wrong" });  }};module.exports.updateusers = (req, res) => {  const { user_id } = req.params;  const {    fullname,    gender,    mobile,    email,    address,    referral,    date_of_birth,    occupation,    next_of_kin,    next_of_kin_phone  } = req.body;  const errorResponse = validationResult(req);  try {    if (!errorResponse.isEmpty()) {      return res.status(400).json({ message: errorResponse.errors[0].msg });    }    if (!user_id) {      return res.status(400).json({ message: "User ID is required" });    }    // Build dynamic query based on provided fields (only for existing columns)    const updateFields = [];    const updateValues = [];    // Only update fields that exist in the database    if (fullname !== undefined) {      updateFields.push('fullname = ?');      updateValues.push(fullname);    }    if (gender !== undefined) {      updateFields.push('gender = ?');      updateValues.push(gender);    }    if (mobile !== undefined) {      updateFields.push('mobile = ?');      updateValues.push(mobile);    }    if (email !== undefined) {      updateFields.push('email = ?');      updateValues.push(email);    }    if (address !== undefined) {      updateFields.push('address = ?');      updateValues.push(address);    }    if (referral !== undefined) {      updateFields.push('referral = ?');      updateValues.push(referral);    }    // Note: date_of_birth, occupation, next_of_kin, next_of_kin_phone columns don't exist in the current database schema    // These fields are ignored for now to prevent SQL errors    if (date_of_birth !== undefined) {      }    if (occupation !== undefined) {      }    if (next_of_kin !== undefined) {      }    if (next_of_kin_phone !== undefined) {      }    if (updateFields.length === 0) {      return res.status(400).json({ message: "No fields to update" });    }    // Add user_id to the end of values array    updateValues.push(user_id);    const updateQuery = `UPDATE users SET ${updateFields.join(', ')} WHERE user_id = ?`;    DB.query(updateQuery, updateValues, (e, result) => {      if (e) {        res.status(500).json({ message: "can't update user" });      } else {        if (result.affectedRows === 0) {          res.status(404).json({ message: "User not found" });        } else {          res.status(200).json({ message: "Your profile has been updated" });        }      }    });  } catch (error) {    res.status(500).json({ message: error.message ?? "something went wrong" });  }};module.exports.deleteuser = (req, res) => {  const { user_id } = req.params;  try {    if (!user_id) {      return res.status(400).json({ message: "user ID is required" });    }    DB.query("SELECT * FROM users WHERE user_id = ?", [user_id], (e, user) => {      if (e) {        return res.status(500).json({ message: "error checking user" });      }      if (user.length === 0) {        return res.status(404).json({ message: "user not found" });      }      DB.query("DELETE FROM users WHERE user_id = ?", [user_id], (er, result) => {        if (er) {          return res.status(500).json({ message: "unable to delete user" });        } else {          return res.status(200).json({ message: "user deleted successfully" });        }      });    });  } catch (error) {    res.status(500).json({ message: error.message ?? "something went wrong" });  }};// Check if user needs to set password (first-time login)module.exports.checkUserStatus = (req, res) => {  const { email_mobile } = req.body;  try {    DB.query("SELECT user_id, fullname, email, mobile, password, first_login FROM users WHERE email = ? OR mobile = ?",      [email_mobile, email_mobile], (e, user) => {      if (e) {        res.status(500).json({ message: "Unable to fetch user", error: e });      } else {        if (user.length > 0) {          const userData = user[0];          if (!userData.password) {            res.status(200).json({              needsPassword: true,              user: {                user_id: userData.user_id,                fullname: userData.fullname,                email: userData.email,                mobile: userData.mobile              }            });          } else {            res.status(200).json({ needsPassword: false });          }        } else {          res.status(404).json({ message: "User not found" });        }      }    });  } catch (error) {    res.status(500).json({ message: error.message ?? "Something went wrong" });  }};// Set password for first-time usersmodule.exports.setUserPassword = (req, res) => {  const errorResponse = validationResult(req);  const { user_id, password, confirm_password } = req.body;  try {    if (!errorResponse.isEmpty()) {      return res.status(400).json({ message: errorResponse.errors[0].msg });    }    if (password !== confirm_password) {      return res.status(400).json({ message: "Passwords do not match" });    }    // Hash the password    const hashedPassword = bcrypt.hashSync(password, 10);    DB.query(      "UPDATE users SET password = ?, password_set_at = NOW(), first_login = FALSE WHERE user_id = ?",      [hashedPassword, user_id],      (updateError, result) => {        if (updateError) {          res.status(500).json({ message: "Failed to set password" });        } else {          if (result.affectedRows > 0) {            res.status(200).json({ message: "Password set successfully" });          } else {            res.status(404).json({ message: "User not found" });          }        }      }    );  } catch (error) {    res.status(500).json({ message: error.message ?? "Something went wrong" });  }};module.exports.loginUser = (req, res) => {  const errorResponse = validationResult(req);  const { email_mobile, password } = req.body;  try {    if (!errorResponse.isEmpty()) {      return res.status(400).json({ message: errorResponse.errors[0].msg });    }    DB.query("SELECT * FROM users WHERE email = ? OR mobile = ?", [email_mobile, email_mobile], (e, user) => {      if (e) {        res.status(500).json({ message: "Unable to fetch user", error: e });      } else {        if (user.length > 0) {          const userData = user[0];          const dbPassword = userData.password;          if (!dbPassword) {            return res.status(400).json({              message: "Please set your password first",              needsPassword: true,              user: {                user_id: userData.user_id,                fullname: userData.fullname,                email: userData.email,                mobile: userData.mobile              }            });          }          const matchPassword = bcrypt.compareSync(password, dbPassword);          if (matchPassword) {            // Generate JWT token            const token = jwt.sign(              {                id: userData.user_id,                email: userData.email,                mobile: userData.mobile              },              process.env.JWT_SECRET || 'QWERTYUIOPLKJHGFDSAZXCVBNM',              { expiresIn: "1d" }            );            res.status(200).json({              message: "Login successful",              token: token,              user: {                user_id: userData.user_id,                fullname: userData.fullname,                email: userData.email,                mobile: userData.mobile,                gender: userData.gender,                address: userData.address,                createdAt: userData.created_at              }            });          } else {            res.status(400).json({ message: "Invalid Email or Password" });          }        } else {          res.status(404).json({ message: "User not found" });        }      }    });  } catch (error) {    res.status(500).json({ message: error.message ?? "Something went wrong" });  }};module.exports.getTotalusers = (req, res) => {  try {    DB.query("SELECT COUNT(*) AS totalusers FROM users", (err, result) => {      if (err) {        res.status(500).json({ message: "Can't fetch total members" });      } else {        const totalUsers = result[0].totalusers;        res.status(200).json({ message: totalUsers });      }    });  } catch (error) {    res.status(500).json({ message: error.message ?? "something went wrong" });  }};
