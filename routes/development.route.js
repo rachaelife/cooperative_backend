@@ -7,8 +7,12 @@ const {
   updateDevelopment,
   deleteDevelopment,
   getTotalDevelopment,
-  getUserDevelopment
+  getUserDevelopment,
+  testDevelopment
 } = require("../controller/development.controller");
+
+// Test endpoint
+developmentRouter.post("/test/development", testDevelopment);
 
 // Create new development savings
 developmentRouter.post(

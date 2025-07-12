@@ -3,6 +3,7 @@
 -- Users table (members)
 CREATE TABLE IF NOT EXISTS users (
   user_id INT AUTO_INCREMENT PRIMARY KEY,
+  registration_number VARCHAR(50) UNIQUE,
   fullname VARCHAR(255) NOT NULL,
   gender ENUM('male', 'female') NOT NULL,
   mobile VARCHAR(20) NOT NULL,
@@ -15,7 +16,8 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_email (email),
   INDEX idx_mobile (mobile),
-  INDEX idx_status (status)
+  INDEX idx_status (status),
+  INDEX idx_registration_number (registration_number)
 );
 
 -- Admin table

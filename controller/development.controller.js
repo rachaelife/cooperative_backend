@@ -1,7 +1,21 @@
-const { validationResult } = require("express-validator");
+ const { validationResult } = require("express-validator");
 const { DB } = require("../sql");
 
 // Create new development savings
+// Simple test endpoint
+module.exports.testDevelopment = (req, res) => {
+  console.log("🧪 Development test endpoint called");
+  console.log("📦 Request body:", req.body);
+  console.log("🔑 Request headers:", req.headers);
+
+  return res.status(200).json({
+    message: "Development endpoint is working!",
+    timestamp: new Date().toISOString(),
+    body: req.body,
+    method: req.method
+  });
+};
+
 module.exports.createDevelopment = (req, res) => {
   const { user_id, amount, month_paid, payment_type } = req.body;
   const errorResponse = validationResult(req);

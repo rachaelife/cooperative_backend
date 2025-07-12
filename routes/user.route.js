@@ -9,6 +9,8 @@ const {
   getTotalusers,
   checkUserStatus,
   setUserPassword,
+  generateRegistrationNumbers,
+  resetRegistrationNumbers,
 } = require("../controller/user.controller");
 const { DB } = require("../sql");
 const { body, param } = require("express-validator");
@@ -24,6 +26,7 @@ userRouter.post(
     body("email").notEmpty().withMessage("email required"),
     body("address").notEmpty().withMessage("address required"),
     body("referral").notEmpty().withMessage("referral required"),
+    body("registration_number").optional().isLength({ min: 3, max: 50 }).withMessage("Registration number must be between 3 and 50 characters"),
   ],
   createnewuser
 );
@@ -109,11 +112,11 @@ userRouter.get("/users/search", (req, res) => {
   const searchQuery = `%${query}%`;
   const sql = `
     SELECT * FROM users
-    WHERE fullname LIKE ? OR email LIKE ? OR mobile LIKE ? OR address LIKE ?
-    ORDER BY fullname ASC
+    WHERE fullname LIKE ? OR email LIKE ? OR mobile LIKE ? OR address LIKE ? OR registration_number LIKE ?
+    ORDER BY CAST(SUBSTRING(registration_number, 5) AS UNSIGNED) ASC, user_id ASC
   `;
 
-  DB.query(sql, [searchQuery, searchQuery, searchQuery, searchQuery], (err, results) => {
+  DB.query(sql, [searchQuery, searchQuery, searchQuery, searchQuery, searchQuery], (err, results) => {
     if (err) {
       console.error("Search error:", err);
       return res.status(500).json({ message: "Search failed" });
@@ -147,5 +150,11 @@ userRouter.get("/users/filter", (req, res) => {
     res.status(200).json({ message: results });
   });
 });
+
+// Generate registration numbers for existing users
+userRouter.post("/generate-registration-numbers", generateRegistrationNumbers);
+
+// Reset and regenerate all registration numbers sequentially from COOP001
+userRouter.post("/reset-registration-numbers", resetRegistrationNumbers);
 
 module.exports = userRouter;

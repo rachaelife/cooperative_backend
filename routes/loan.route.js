@@ -1,6 +1,6 @@
 const express = require("express")
 const { body, param} = require("express-validator")
-const { createnewloan, getAllLoans, getUserLoans, deleteloan, updateloans, disburseLoan, recordLoanRepayment, getLoanInstallments, getTotalLoans, getTotalLoanAmount, getTotalLoanApplications } = require("../controller/loan.controller")
+const { createnewloan, getAllLoans, getUserLoans, deleteloan, updateloans, disburseLoan, recordLoanRepayment, getLoanInstallments, getTotalLoans, getTotalLoanAmount, getTotalLoanApplications, getCompletedLoans } = require("../controller/loan.controller")
 
 
 
@@ -38,6 +38,8 @@ loanRouter.post("/repay/loan",
     recordLoanRepayment)
 
 loanRouter.get("/loans",getAllLoans)
+
+loanRouter.get("/loans/completed", getCompletedLoans)
 
 loanRouter.get("/loans/user/:user_id", getUserLoans)
 

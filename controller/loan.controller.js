@@ -38,6 +38,7 @@ module.exports.getAllLoans = (req, res) => {
       `SELECT l.*, u.fullname, u.email, u.mobile
        FROM loans l
        LEFT JOIN users u ON l.user_id = u.user_id
+       WHERE l.status != 'completed'
        ORDER BY l.loan_id DESC`,
       (joinError, loans) => {
         if (joinError) {
@@ -46,7 +47,7 @@ module.exports.getAllLoans = (req, res) => {
 
           // Fallback query without JOIN
           DB.query(
-            "SELECT * FROM loans ORDER BY loan_id DESC",
+            "SELECT * FROM loans WHERE status != 'completed' ORDER BY loan_id DESC",
             (fallbackError, fallbackLoans) => {
               if (fallbackError) {
                 console.error("❌ Error fetching loans:", fallbackError);
@@ -67,6 +68,34 @@ module.exports.getAllLoans = (req, res) => {
     );
   } catch (error) {
     console.error("❌ Error fetching loans:", error);
+    res.status(500).json({ message: error.message ?? "something went wrong" });
+  }
+};
+
+// Get completed loans for repayment history
+module.exports.getCompletedLoans = (req, res) => {
+  console.log("📋 Fetching completed loans for repayment history...");
+
+  try {
+    DB.query(
+      `SELECT l.*, u.fullname, u.email, u.mobile, u.registration_number
+       FROM loans l
+       LEFT JOIN users u ON l.user_id = u.user_id
+       WHERE l.status = 'completed'
+       ORDER BY l.updated_at DESC`,
+      (error, loans) => {
+        if (error) {
+          console.error("❌ Error fetching completed loans:", error);
+          res.status(500).json({ message: error.message ?? "something went wrong" });
+        } else {
+          console.log("✅ Completed loans fetched successfully");
+          console.log("📊 Completed loans found:", loans.length);
+          res.status(200).json({ message: loans });
+        }
+      }
+    );
+  } catch (error) {
+    console.error("❌ Error fetching completed loans:", error);
     res.status(500).json({ message: error.message ?? "something went wrong" });
   }
 };
@@ -199,6 +228,40 @@ module.exports.updateloans = (req, res) => {
 
         if (result.affectedRows === 0) {
           return res.status(404).json({ message: "Loan not found" });
+        }
+
+        // If loan is marked as completed, create a repayment record
+        if (status === 'completed') {
+          // Get loan details to create repayment record
+          DB.query(
+            'SELECT l.*, u.fullname FROM loans l JOIN users u ON l.user_id = u.user_id WHERE l.loan_id = ?',
+            [loan_id],
+            (loanError, loanResult) => {
+              if (!loanError && loanResult.length > 0) {
+                const loan = loanResult[0];
+                const principal = parseFloat(loan.amount_disbursed || 0);
+                const totalRepaid = parseFloat(loan_repayment || 0);
+                const totalInterest = Math.max(0, totalRepaid - principal);
+
+                // Create repayment record with enhanced details
+                DB.query(
+                  `INSERT INTO loan_repayments (
+                    loan_id, user_id, amount, payment_date, payment_method,
+                    status, notes, installment_number, principal, total_interest,
+                    total_amount_paid, loan_term
+                  ) VALUES (?, ?, ?, NOW(), 'completion', 'confirmed', 'Loan marked as completed', 1, ?, ?, ?, ?)`,
+                  [loan_id, loan.user_id, loan_repayment, principal, totalInterest, totalRepaid, loan.loan_term || loan.duration || '6 months'],
+                  (repaymentError) => {
+                    if (repaymentError) {
+                      console.error("⚠️ Error creating repayment record:", repaymentError);
+                    } else {
+                      console.log("✅ Enhanced repayment record created for completed loan");
+                    }
+                  }
+                );
+              }
+            }
+          );
         }
 
         console.log("✅ Loan updated successfully with remaining balance:", remaining_balance);

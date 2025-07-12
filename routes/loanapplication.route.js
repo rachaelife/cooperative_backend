@@ -1,6 +1,6 @@
 const express = require("express")
 const { body, param } = require("express-validator")
-const { createnewloan_application, updateloan_applicationstatus, getAllapplication, deleteapplication } = require("../controller/loanapplication.controller")
+const { createnewloan_application, updateloan_applicationstatus, getAllapplication, deleteapplication, testDisbursement, testConnection, manualDisburse, debugApproval, forceDisburse, simpleTest, directDisburse, checkLoanStatus, forceProcessApproved, approveLoan, fixApprovedLoansNow } = require("../controller/loanapplication.controller")
 
 const loan_applicationRouter = express.Router()
 
@@ -54,6 +54,13 @@ loan_applicationRouter.post("/new/loan_application",
 
         loan_applicationRouter.get("/application",getAllapplication)
 
+        // Approve loan endpoint - handles approval and disbursement
+        loan_applicationRouter.post("/approve-loan/:loanId",
+            [
+                param("loanId").notEmpty().withMessage("Loan ID is required").isNumeric().withMessage("Loan ID must be a number")
+            ],
+            approveLoan)
+
         // Get loan applications for a specific user
         loan_applicationRouter.get("/application/user/:user_id", (req, res) => {
           const { user_id } = req.params;
@@ -101,5 +108,19 @@ loan_applicationRouter.post("/new/loan_application",
 
 
 
+
+// IMMEDIATE FIX ROUTE
+loan_applicationRouter.post("/fix-now", fixApprovedLoansNow)
+
+// Test routes
+loan_applicationRouter.get("/check/status", checkLoanStatus)
+loan_applicationRouter.get("/test/simple", simpleTest)
+loan_applicationRouter.get("/test/connection", testConnection)
+loan_applicationRouter.post("/test/disburse", testDisbursement)
+loan_applicationRouter.post("/direct/disburse", directDisburse)
+loan_applicationRouter.post("/force/process", forceProcessApproved)
+loan_applicationRouter.post("/manual/disburse/:loan_application_id", manualDisburse)
+loan_applicationRouter.get("/debug/:loan_application_id", debugApproval)
+loan_applicationRouter.post("/force/disburse/:loan_application_id", forceDisburse)
 
 module.exports = loan_applicationRouter

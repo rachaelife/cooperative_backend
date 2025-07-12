@@ -232,4 +232,60 @@ module.exports.getTotalshares = (req, res)=>{
   } catch (error) {
     res.status(500).json({message: error.message})
   }
-}
+};
+
+// Get total of regular savings only
+module.exports.getAllTotalSavings = (req, res) => {
+  try {
+    DB.query("SELECT SUM(amount) AS total FROM savings WHERE savings_type = 'savings'", (err, result) => {
+      if (err) {
+        res.status(500).json({ message: "Can't fetch total regular savings" });
+      } else {
+        const total = result[0]?.total || 0;
+        res.status(200).json({ message: { total: total } });
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get current month regular savings only
+module.exports.getCurrentMonthSavings = (req, res) => {
+  try {
+    const currentMonth = new Date().toLocaleString('default', { month: 'long' });
+    DB.query(
+      "SELECT SUM(amount) AS total FROM savings WHERE month_paid = ? AND savings_type = 'savings'",
+      [currentMonth],
+      (err, result) => {
+        if (err) {
+          res.status(500).json({ message: "Can't fetch current month regular savings" });
+        } else {
+          const total = result[0]?.total || 0;
+          res.status(200).json({ message: { total: total } });
+        }
+      }
+    );
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get average regular savings
+module.exports.getAverageRegularSavings = (req, res) => {
+  try {
+    DB.query(
+      "SELECT AVG(amount) AS average FROM savings WHERE savings_type = 'savings'",
+      (err, result) => {
+        if (err) {
+          res.status(500).json({ message: "Can't fetch average regular savings" });
+        } else {
+          const average = result[0]?.average || 0;
+          res.status(200).json({ message: { average: average } });
+        }
+      }
+    );
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

@@ -128,107 +128,132 @@ module.exports.createnewloan_application = (req, res) => {
 module.exports.updateloan_applicationstatus = (req, res) => {
   const { loan_application_id } = req.params;
   const { loan_status } = req.body;
-  const errorResponse = validationResult(req);
 
-  console.log("✏️ Updating loan application:", loan_application_id, "to status:", loan_status);
+  console.log("🚀 UPDATING LOAN:", loan_application_id, "to", loan_status);
+  console.log("📋 Status type:", typeof loan_status);
+  console.log("📋 Status value:", JSON.stringify(loan_status));
 
-  try {
-    if (!errorResponse.isEmpty()) {
-      return res.status(400).json({ error: errorResponse.array() });
-    }
+  // Update the status first
+  DB.query(
+    "UPDATE loan_application SET loan_status = ? WHERE loan_application_id = ?",
+    [loan_status, loan_application_id],
+    (error, result) => {
+      if (error) {
+        console.error("❌ Update error:", error);
+        return res.status(500).json({ message: "Update failed" });
+      }
 
-    DB.query(
-      "UPDATE loan_application SET loan_status = ? WHERE loan_application_id = ?",
-      [loan_status, loan_application_id],
-      (error, result) => {
-        if (error) {
-          console.error("❌ Error updating loan application:", error);
-          return res.status(500).json({ message: error.message ?? "Something went wrong" });
-        }
+      console.log("✅ Status updated successfully");
+      console.log("📊 Affected rows:", result.affectedRows);
 
-        if (result.affectedRows === 0) {
-          return res.status(404).json({ message: "Loan application not found" });
-        }
+      // Check if disbursement should trigger
+      console.log("🔍 Checking if disbursement should trigger...");
+      console.log("📋 loan_status === 'approved':", loan_status === 'approved');
+      console.log("📋 loan_status.toLowerCase() === 'approved':", loan_status?.toLowerCase() === 'approved');
 
-        console.log("✅ Loan application status updated successfully");
+      // If approved, immediately create loan and update to disbursed
+      if (loan_status === 'approved' || loan_status?.toLowerCase() === 'approved') {
+        console.log("🔄 ✅ DISBURSEMENT TRIGGERED! Creating loan...");
 
-        // If loan is approved, create loan entry and repayment schedule
-        if (loan_status === 'approved') {
-          console.log("🔄 Loan approved, creating loan entry and repayment schedule...");
+        // Get application details
+        DB.query(
+          "SELECT * FROM loan_application WHERE loan_application_id = ?",
+          [loan_application_id],
+          (appError, apps) => {
+            if (appError || apps.length === 0) {
+              console.error("❌ App fetch error:", appError);
+              return res.status(200).json({ message: "Status updated" });
+            }
 
-          // First, get the loan application details
-          DB.query(
-            "SELECT * FROM loan_application WHERE loan_application_id = ?",
-            [loan_application_id],
-            (appError, applications) => {
-              if (appError) {
-                console.error("❌ Error fetching loan application:", appError);
-                return res.status(200).json({ message: "Loan status updated, but failed to create loan entry" });
+            const app = apps[0];
+            console.log("📋 Found app for user:", app.user_id, "amount:", app.loan_amount);
+
+            // First check if loans table exists
+            DB.query("SHOW TABLES LIKE 'loans'", (tableError, tableResult) => {
+              if (tableError) {
+                console.error("❌ Error checking loans table:", tableError);
+                return res.status(200).json({ message: "Status updated but table check failed" });
               }
 
-              if (applications.length === 0) {
-                console.error("❌ Loan application not found");
-                return res.status(200).json({ message: "Loan status updated, but application not found" });
-              }
+              if (tableResult.length === 0) {
+                console.log("🔧 Loans table doesn't exist, creating it...");
 
-              const application = applications[0];
-              const loanTerm = application.loan_term || 12;
-              const monthlyInstallment = application.monthly_installment || 0;
-              const totalAmount = application.total_amount || application.loan_amount;
-              const remainingBalance = totalAmount;
+                const createTableSQL = `
+                  CREATE TABLE loans (
+                    loan_id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    amount_disbursed DECIMAL(15,2) NOT NULL,
+                    loan_repayment DECIMAL(15,2) DEFAULT 0,
+                    remaining_balance DECIMAL(15,2) DEFAULT 0,
+                    status ENUM('active', 'completed', 'defaulted') DEFAULT 'active',
+                    disbursement_date DATE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                  )
+                `;
 
-              // Create loan entry in loans table
-              DB.query(
-                "INSERT INTO loans (user_id, amount_disbursed, loan_repayment, interest_paid, payment_method, status, disbursement_date, loan_term, monthly_payment, remaining_balance, next_payment_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                [
-                  application.user_id,
-                  application.loan_amount,
-                  0, // Initial repayment is 0
-                  application.total_interest || 0,
-                  'bank transfer', // Default payment method
-                  'active',
-                  new Date().toISOString().split('T')[0], // Today's date
-                  loanTerm,
-                  monthlyInstallment,
-                  remainingBalance,
-                  getNextPaymentDate() // Calculate next payment date (30 days from now)
-                ],
-                (loanError, loanResult) => {
-                  if (loanError) {
-                    console.error("❌ Error creating loan entry:", loanError);
-                    return res.status(200).json({ message: "Loan status updated, but failed to create loan entry" });
+                DB.query(createTableSQL, (createError) => {
+                  if (createError) {
+                    console.error("❌ Error creating loans table:", createError);
+                    return res.status(200).json({ message: "Status updated but failed to create loans table" });
                   }
 
-                  console.log("✅ Loan entry created with ID:", loanResult.insertId);
+                  console.log("✅ Loans table created successfully");
+                  createLoanEntry();
+                });
+              } else {
+                console.log("✅ Loans table exists");
+                createLoanEntry();
+              }
+            });
 
-                  // Now create repayment schedule
-                  createLoanRepaymentSchedule(loan_application_id, (scheduleError) => {
-                    if (scheduleError) {
-                      console.error("❌ Error creating repayment schedule:", scheduleError);
-                    } else {
-                      console.log("✅ Repayment schedule created successfully");
+            function createLoanEntry() {
+              // Create loan entry
+              console.log("💰 Creating loan entry for user:", app.user_id, "amount:", app.loan_amount);
+              DB.query(
+                "INSERT INTO loans (user_id, amount_disbursed, loan_repayment, remaining_balance, status, disbursement_date) VALUES (?,?,?,?,?,?)",
+                [app.user_id, app.loan_amount, 0, app.loan_amount, 'active', new Date().toISOString().split('T')[0]],
+                (loanError, loanResult) => {
+                  if (loanError) {
+                    console.error("❌ Loan creation error:", loanError);
+                    console.error("❌ SQL Error details:", loanError.sqlMessage);
+                    return res.status(200).json({ message: "Status updated but loan creation failed: " + loanError.message });
+                  }
+
+                  console.log("✅ Loan created with ID:", loanResult.insertId);
+
+                  // Update to disbursed
+                  console.log("🔄 Updating application status to 'disbursed'...");
+                  DB.query(
+                    "UPDATE loan_application SET loan_status = 'disbursed' WHERE loan_application_id = ?",
+                    [loan_application_id],
+                    (disbursedError, disbursedResult) => {
+                      if (disbursedError) {
+                        console.error("❌ Disbursed update error:", disbursedError);
+                        console.error("❌ SQL Error details:", disbursedError.sqlMessage);
+                      } else {
+                        console.log("✅ Status updated to DISBURSED");
+                        console.log("✅ Affected rows:", disbursedResult.affectedRows);
+                      }
+
+                      return res.status(200).json({
+                        message: "Loan approved and disbursed successfully",
+                        loan_id: loanResult.insertId,
+                        application_id: loan_application_id,
+                        status: "disbursed"
+                      });
                     }
-
-                    // Send response after all operations are complete
-                    return res.status(200).json({
-                      message: "Loan approved and disbursed successfully",
-                      loan_id: loanResult.insertId
-                    });
-                  });
+                  );
                 }
               );
             }
-          );
-        } else {
-          // If not approved, just send the response
-          res.status(200).json({ message: "Your loan status has been updated" });
-        }
+          }
+        );
+      } else {
+        // Not approved, just return success
+        return res.status(200).json({ message: "Status updated successfully" });
       }
-    );
-  } catch (error) {
-    console.error("❌ Error updating loan application:", error);
-    res.status(500).json({ message: error.message ?? "Something went wrong" });
-  }
+    }
+  );
 };
 
 module.exports.getAllapplication = (req, res) => {
@@ -551,3 +576,834 @@ function createLoanRepaymentsTable(callback) {
     }
   });
 }
+
+// Helper function to calculate due date (final repayment date)
+function getDueDate(loanTermMonths = 6) {
+  const dueDate = new Date();
+  dueDate.setMonth(dueDate.getMonth() + loanTermMonths);
+  return dueDate.toISOString().split('T')[0];
+}
+
+// Helper function to calculate next payment date (30 days from now)
+function getNextPaymentDate() {
+  const nextDate = new Date();
+  nextDate.setDate(nextDate.getDate() + 30);
+  return nextDate.toISOString().split('T')[0];
+}
+
+// Force disbursement for testing
+module.exports.forceDisburse = (req, res) => {
+  const { loan_application_id } = req.params;
+
+  console.log("🚀 FORCE DISBURSEMENT for application:", loan_application_id);
+
+  // Get the application
+  DB.query(
+    "SELECT * FROM loan_application WHERE loan_application_id = ?",
+    [loan_application_id],
+    (error, applications) => {
+      if (error || applications.length === 0) {
+        console.error("❌ Application not found:", error);
+        return res.status(404).json({ message: "Application not found" });
+      }
+
+      const app = applications[0];
+      console.log("📋 Found application:", app);
+
+      // Create loan entry
+      DB.query(
+        "INSERT INTO loans (user_id, amount_disbursed, loan_repayment, remaining_balance, status, disbursement_date) VALUES (?,?,?,?,?,?)",
+        [app.user_id, app.loan_amount, 0, app.loan_amount, 'active', new Date().toISOString().split('T')[0]],
+        (loanError, loanResult) => {
+          if (loanError) {
+            console.error("❌ Error creating loan:", loanError);
+            return res.status(500).json({ message: "Failed to create loan", error: loanError.message });
+          }
+
+          console.log("✅ Loan created with ID:", loanResult.insertId);
+
+          // Update status to disbursed
+          DB.query(
+            "UPDATE loan_application SET loan_status = 'disbursed' WHERE loan_application_id = ?",
+            [loan_application_id],
+            (updateError) => {
+              if (updateError) {
+                console.error("❌ Error updating status:", updateError);
+              } else {
+                console.log("✅ Status updated to disbursed");
+              }
+
+              res.status(200).json({
+                message: "Force disbursement completed",
+                loan_id: loanResult.insertId,
+                application_id: loan_application_id
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+};
+
+// Manual disbursement for specific application
+module.exports.manualDisburse = (req, res) => {
+  const { loan_application_id } = req.params;
+
+  console.log("🔧 Manual disbursement requested for application:", loan_application_id);
+
+  try {
+    // First check if loans table exists and get its structure
+    DB.query("DESCRIBE loans", (descError, tableStructure) => {
+      if (descError) {
+        console.error("❌ Loans table doesn't exist or can't be accessed:", descError);
+        return res.status(500).json({
+          message: "Loans table error",
+          error: descError.message,
+          suggestion: "Run database setup script"
+        });
+      }
+
+      console.log("✅ Loans table structure:", tableStructure.map(col => col.Field));
+
+      // Get the application
+      DB.query(
+        "SELECT * FROM loan_application WHERE loan_application_id = ?",
+        [loan_application_id],
+        (error, applications) => {
+          if (error) {
+            console.error("❌ Error fetching application:", error);
+            return res.status(500).json({ message: error.message });
+          }
+
+          if (applications.length === 0) {
+            console.log("❌ Application not found with ID:", loan_application_id);
+            return res.status(404).json({ message: "Application not found" });
+          }
+
+          const application = applications[0];
+          console.log("📋 Found application:", {
+            id: application.loan_application_id,
+            user_id: application.user_id,
+            amount: application.loan_amount,
+            status: application.loan_status
+          });
+
+          if (application.loan_status !== 'approved') {
+            return res.status(400).json({
+              message: `Application status is '${application.loan_status}', not 'approved'`
+            });
+          }
+
+          // Create loan entry with minimal required fields
+          const disbursementDate = new Date().toISOString().split('T')[0];
+
+          console.log("💰 Creating loan with data:", {
+            user_id: application.user_id,
+            amount_disbursed: application.loan_amount,
+            disbursement_date: disbursementDate
+          });
+
+          DB.query(
+            "INSERT INTO loans (user_id, amount_disbursed, loan_repayment, remaining_balance, status, disbursement_date) VALUES (?,?,?,?,?,?)",
+            [
+              application.user_id,
+              application.loan_amount,
+              0,
+              application.loan_amount,
+              'active',
+              disbursementDate
+            ],
+            (loanError, loanResult) => {
+              if (loanError) {
+                console.error("❌ Error creating loan:", loanError);
+                console.error("❌ SQL Error:", loanError.sqlMessage);
+                return res.status(500).json({
+                  message: "Failed to create loan",
+                  error: loanError.sqlMessage || loanError.message
+                });
+              }
+
+              console.log("✅ Loan created with ID:", loanResult.insertId);
+
+              // Update application status to disbursed
+              DB.query(
+                "UPDATE loan_application SET loan_status = 'disbursed' WHERE loan_application_id = ?",
+                [loan_application_id],
+                (updateError) => {
+                  if (updateError) {
+                    console.error("❌ Error updating status:", updateError);
+                    return res.status(500).json({
+                      message: "Loan created but failed to update application status",
+                      loan_id: loanResult.insertId,
+                      error: updateError.message
+                    });
+                  }
+
+                  console.log("✅ Application status updated to disbursed");
+
+                  res.status(200).json({
+                    success: true,
+                    message: "Manual disbursement completed successfully",
+                    loan_id: loanResult.insertId,
+                    application_id: loan_application_id,
+                    amount: application.loan_amount
+                  });
+                }
+              );
+            }
+          );
+        }
+      );
+    });
+  } catch (error) {
+    console.error("❌ Unexpected error in manualDisburse:", error);
+    return res.status(500).json({
+      message: "Unexpected error occurred",
+      error: error.message
+    });
+  }
+};
+
+// Simple test function to check database connection
+module.exports.testConnection = (req, res) => {
+  console.log("🔍 Testing database connection...");
+
+  try {
+    // Test basic query
+    DB.query("SELECT 1 as test", (error, result) => {
+      if (error) {
+        console.error("❌ Database connection failed:", error);
+        return res.status(500).json({ message: "Database connection failed", error: error.message });
+      }
+
+      console.log("✅ Database connection successful");
+
+      // Test loan_application table
+      DB.query("SELECT COUNT(*) as count FROM loan_application WHERE loan_status = 'approved'", (error2, result2) => {
+        if (error2) {
+          console.error("❌ loan_application table query failed:", error2);
+          return res.status(500).json({ message: "loan_application table error", error: error2.message });
+        }
+
+        console.log("✅ loan_application table accessible, approved count:", result2[0].count);
+
+        // Test loans table
+        DB.query("DESCRIBE loans", (error3, result3) => {
+          if (error3) {
+            console.error("❌ loans table structure check failed:", error3);
+            return res.status(500).json({ message: "loans table error", error: error3.message });
+          }
+
+          console.log("✅ loans table structure:", result3.map(col => col.Field));
+
+          return res.status(200).json({
+            message: "Database tests passed",
+            approved_applications: result2[0].count,
+            loans_table_columns: result3.map(col => col.Field)
+          });
+        });
+      });
+    });
+  } catch (error) {
+    console.error("❌ Unexpected error in testConnection:", error);
+    return res.status(500).json({ message: "Unexpected error", error: error.message });
+  }
+};
+
+// Simple debug function to check what's happening
+module.exports.debugApproval = (req, res) => {
+  const { loan_application_id } = req.params;
+
+  console.log("🔍 DEBUG: Checking application:", loan_application_id);
+
+  // Get application details
+  DB.query(
+    "SELECT * FROM loan_application WHERE loan_application_id = ?",
+    [loan_application_id],
+    (error, applications) => {
+      if (error) {
+        console.error("❌ Error fetching application:", error);
+        return res.status(500).json({ message: error.message });
+      }
+
+      if (applications.length === 0) {
+        return res.status(404).json({ message: "Application not found" });
+      }
+
+      const app = applications[0];
+      console.log("📋 Application found:", app);
+
+      // Check if loans table exists
+      DB.query("SHOW TABLES LIKE 'loans'", (tableError, tableResult) => {
+        console.log("📋 Loans table check:", tableResult);
+
+        // Try to create a simple loan entry
+        if (app.loan_status === 'approved') {
+          console.log("🚀 Attempting to create loan entry...");
+
+          DB.query(
+            "INSERT INTO loans (user_id, amount_disbursed, status, disbursement_date) VALUES (?,?,?,?)",
+            [app.user_id, app.loan_amount, 'active', new Date().toISOString().split('T')[0]],
+            (loanError, loanResult) => {
+              if (loanError) {
+                console.error("❌ Error creating loan:", loanError);
+                return res.status(500).json({
+                  message: "Failed to create loan",
+                  error: loanError.message,
+                  application: app
+                });
+              }
+
+              console.log("✅ Loan created successfully:", loanResult.insertId);
+
+              // Update status to disbursed
+              DB.query(
+                "UPDATE loan_application SET loan_status = 'disbursed' WHERE loan_application_id = ?",
+                [loan_application_id],
+                (updateError) => {
+                  if (updateError) {
+                    console.error("❌ Error updating status:", updateError);
+                  } else {
+                    console.log("✅ Status updated to disbursed");
+                  }
+
+                  res.status(200).json({
+                    message: "Debug disbursement completed",
+                    loan_id: loanResult.insertId,
+                    application: app
+                  });
+                }
+              );
+            }
+          );
+        } else {
+          res.status(200).json({
+            message: "Application status is not approved",
+            application: app,
+            loans_table_exists: tableResult.length > 0
+          });
+        }
+      });
+    }
+  );
+};
+
+// Check loan status - shows what's in both tables
+module.exports.checkLoanStatus = (req, res) => {
+  console.log("🔍 Checking loan status...");
+
+  // Get approved applications
+  DB.query("SELECT * FROM loan_application WHERE loan_status = 'approved'", (error1, approvedApps) => {
+    if (error1) {
+      return res.status(500).json({ message: "Error checking approved apps", error: error1.message });
+    }
+
+    // Get disbursed loans
+    DB.query("SELECT * FROM loans", (error2, loans) => {
+      if (error2) {
+        return res.status(500).json({ message: "Error checking loans", error: error2.message });
+      }
+
+      // Get all applications
+      DB.query("SELECT * FROM loan_application", (error3, allApps) => {
+        if (error3) {
+          return res.status(500).json({ message: "Error checking all apps", error: error3.message });
+        }
+
+        return res.status(200).json({
+          approved_applications: approvedApps.length,
+          approved_details: approvedApps,
+          disbursed_loans: loans.length,
+          disbursed_details: loans,
+          all_applications: allApps.length,
+          all_applications_details: allApps
+        });
+      });
+    });
+  });
+};
+
+// Direct disbursement - moves all approved loans immediately
+module.exports.directDisburse = (req, res) => {
+  console.log("🚀 DIRECT DISBURSEMENT STARTED");
+
+  // Get all approved loans
+  DB.query(
+    "SELECT * FROM loan_application WHERE loan_status = 'approved'",
+    (error, applications) => {
+      if (error) {
+        console.error("❌ Error:", error);
+        return res.status(500).json({ message: "Database error" });
+      }
+
+      console.log("📋 Found approved applications:", applications.length);
+
+      if (applications.length === 0) {
+        return res.status(200).json({ message: "No approved loans found", count: 0 });
+      }
+
+      let processed = 0;
+      let success = 0;
+
+      applications.forEach((app) => {
+        // Create loan entry
+        DB.query(
+          "INSERT INTO loans (user_id, amount_disbursed, loan_repayment, remaining_balance, status, disbursement_date) VALUES (?,?,?,?,?,?)",
+          [app.user_id, app.loan_amount, 0, app.loan_amount, 'active', new Date().toISOString().split('T')[0]],
+          (loanError, loanResult) => {
+            if (!loanError) {
+              console.log("✅ Loan created:", loanResult.insertId);
+
+              // Update status to disbursed
+              DB.query(
+                "UPDATE loan_application SET loan_status = 'disbursed' WHERE loan_application_id = ?",
+                [app.loan_application_id],
+                (updateError) => {
+                  if (!updateError) {
+                    console.log("✅ Status updated for:", app.loan_application_id);
+                    success++;
+                  }
+                }
+              );
+            }
+
+            processed++;
+            if (processed === applications.length) {
+              return res.status(200).json({
+                message: "Direct disbursement completed",
+                total: applications.length,
+                success: success
+              });
+            }
+          }
+        );
+      });
+    }
+  );
+};
+
+// Approve loan endpoint - handles approval and disbursement
+module.exports.approveLoan = (req, res) => {
+  const { loanId } = req.params;
+
+  console.log("🚀 === LOAN APPROVAL PROCESS STARTED ===");
+  console.log("📋 Loan Application ID:", loanId);
+
+  // Step 1: Find the loan application
+  DB.query(
+    "SELECT * FROM loan_application WHERE loan_application_id = ?",
+    [loanId],
+    (findError, applications) => {
+      if (findError) {
+        console.error("❌ Error finding loan application:", findError);
+        return res.status(500).json({
+          success: false,
+          message: "Database error while finding loan application",
+          error: findError.message
+        });
+      }
+
+      if (applications.length === 0) {
+        console.log("❌ Loan application not found");
+        return res.status(404).json({
+          success: false,
+          message: "Loan application not found"
+        });
+      }
+
+      const application = applications[0];
+      console.log("✅ Found loan application:", {
+        id: application.loan_application_id,
+        user_id: application.user_id,
+        amount: application.loan_amount,
+        current_status: application.loan_status
+      });
+
+      // Step 2: Check if loan is already approved or disbursed
+      if (application.loan_status === 'approved' || application.loan_status === 'disbursed') {
+        console.log("⚠️ Loan already processed, status:", application.loan_status);
+        return res.status(400).json({
+          success: false,
+          message: `Loan is already ${application.loan_status}`
+        });
+      }
+
+      // Step 3: Update loan status to approved
+      console.log("🔄 Updating loan status to approved...");
+      DB.query(
+        "UPDATE loan_application SET loan_status = 'approved' WHERE loan_application_id = ?",
+        [loanId],
+        (updateError, updateResult) => {
+          if (updateError) {
+            console.error("❌ Error updating loan status:", updateError);
+            return res.status(500).json({
+              success: false,
+              message: "Failed to update loan status",
+              error: updateError.message
+            });
+          }
+
+          console.log("✅ Loan status updated to approved");
+          console.log("📊 Update affected rows:", updateResult.affectedRows);
+
+          // Step 4: Create entry in disbursed loans table
+          console.log("💰 Creating disbursed loan entry...");
+
+          const disbursementDate = new Date().toISOString().split('T')[0];
+
+          DB.query(
+            "INSERT INTO loans (user_id, amount_disbursed, loan_repayment, remaining_balance, status, disbursement_date) VALUES (?,?,?,?,?,?)",
+            [
+              application.user_id,
+              application.loan_amount,
+              0, // Initial repayment is 0
+              application.loan_amount, // Remaining balance equals loan amount initially
+              'active',
+              disbursementDate
+            ],
+            (loanError, loanResult) => {
+              if (loanError) {
+                console.error("❌ Error creating disbursed loan:", loanError);
+
+                // Rollback: Update status back to pending
+                DB.query(
+                  "UPDATE loan_application SET loan_status = 'pending' WHERE loan_application_id = ?",
+                  [loanId],
+                  (rollbackError) => {
+                    if (rollbackError) {
+                      console.error("❌ Rollback failed:", rollbackError);
+                    } else {
+                      console.log("🔄 Rolled back loan status to pending");
+                    }
+                  }
+                );
+
+                return res.status(500).json({
+                  success: false,
+                  message: "Failed to create disbursed loan entry",
+                  error: loanError.message
+                });
+              }
+
+              console.log("✅ Disbursed loan created with ID:", loanResult.insertId);
+
+              // Step 5: Update loan application status to disbursed
+              console.log("🔄 Updating loan application status to disbursed...");
+              DB.query(
+                "UPDATE loan_application SET loan_status = 'disbursed' WHERE loan_application_id = ?",
+                [loanId],
+                (disbursedError, disbursedResult) => {
+                  if (disbursedError) {
+                    console.error("❌ Error updating to disbursed status:", disbursedError);
+                    // Note: Loan entry was created, so we don't rollback completely
+                    return res.status(200).json({
+                      success: true,
+                      message: "Loan approved and disbursed, but status update had issues",
+                      loan_id: loanResult.insertId,
+                      application_id: loanId,
+                      warning: "Status update to 'disbursed' failed"
+                    });
+                  }
+
+                  console.log("✅ Loan application status updated to disbursed");
+                  console.log("📊 Disbursed update affected rows:", disbursedResult.affectedRows);
+                  console.log("🎉 === LOAN APPROVAL PROCESS COMPLETED ===");
+
+                  // Step 6: Return success response
+                  return res.status(200).json({
+                    success: true,
+                    message: "Loan approved and disbursed successfully",
+                    data: {
+                      loan_id: loanResult.insertId,
+                      application_id: loanId,
+                      user_id: application.user_id,
+                      amount_disbursed: application.loan_amount,
+                      disbursement_date: disbursementDate,
+                      status: "disbursed"
+                    }
+                  });
+                }
+              );
+            }
+          );
+        }
+      );
+    }
+  );
+};
+
+// Force process approved loans
+module.exports.forceProcessApproved = (req, res) => {
+  console.log("🔧 FORCE PROCESSING APPROVED LOANS");
+
+  // Get all approved loans
+  DB.query(
+    "SELECT * FROM loan_application WHERE loan_status = 'approved'",
+    (error, applications) => {
+      if (error) {
+        console.error("❌ Error:", error);
+        return res.status(500).json({ message: "Database error" });
+      }
+
+      console.log("📋 Found approved applications:", applications.length);
+
+      if (applications.length === 0) {
+        return res.status(200).json({ message: "No approved loans found", count: 0 });
+      }
+
+      let processed = 0;
+      let success = 0;
+
+      applications.forEach((app) => {
+        console.log(`🔄 Processing application ${app.loan_application_id} for user ${app.user_id}`);
+
+        // Create loan entry
+        DB.query(
+          "INSERT INTO loans (user_id, amount_disbursed, loan_repayment, remaining_balance, status, disbursement_date) VALUES (?,?,?,?,?,?)",
+          [app.user_id, app.loan_amount, 0, app.loan_amount, 'active', new Date().toISOString().split('T')[0]],
+          (loanError, loanResult) => {
+            if (!loanError) {
+              console.log("✅ Loan created:", loanResult.insertId);
+
+              // Update status to disbursed
+              DB.query(
+                "UPDATE loan_application SET loan_status = 'disbursed' WHERE loan_application_id = ?",
+                [app.loan_application_id],
+                (updateError) => {
+                  if (!updateError) {
+                    console.log("✅ Status updated to disbursed for:", app.loan_application_id);
+                    success++;
+                  } else {
+                    console.error("❌ Failed to update status:", updateError);
+                  }
+                }
+              );
+            } else {
+              console.error("❌ Failed to create loan:", loanError);
+            }
+
+            processed++;
+            if (processed === applications.length) {
+              return res.status(200).json({
+                message: "Force processing completed",
+                total: applications.length,
+                success: success
+              });
+            }
+          }
+        );
+      });
+    }
+  );
+};
+
+// IMMEDIATE FIX - Move all approved loans to disbursed
+module.exports.fixApprovedLoansNow = (req, res) => {
+  console.log("🔧 IMMEDIATE FIX: Moving approved loans to disbursed");
+
+  // Get approved loans
+  DB.query("SELECT * FROM loan_application WHERE loan_status = 'approved'", (error, approvedLoans) => {
+    if (error) {
+      return res.status(500).json({ message: "Database error", error: error.message });
+    }
+
+    if (approvedLoans.length === 0) {
+      return res.status(200).json({ message: "No approved loans to fix", count: 0 });
+    }
+
+    console.log(`Found ${approvedLoans.length} approved loans to fix`);
+    let processed = 0;
+    let success = 0;
+
+    approvedLoans.forEach((loan) => {
+      // Create loan entry
+      DB.query(
+        "INSERT INTO loans (user_id, amount_disbursed, loan_repayment, remaining_balance, status, disbursement_date) VALUES (?,?,?,?,?,?)",
+        [loan.user_id, loan.loan_amount, 0, loan.loan_amount, 'active', new Date().toISOString().split('T')[0]],
+        (loanError) => {
+          if (!loanError) {
+            // Update to disbursed
+            DB.query(
+              "UPDATE loan_application SET loan_status = 'disbursed' WHERE loan_application_id = ?",
+              [loan.loan_application_id],
+              (updateError) => {
+                if (!updateError) {
+                  success++;
+                }
+              }
+            );
+          }
+
+          processed++;
+          if (processed === approvedLoans.length) {
+            return res.status(200).json({
+              message: `Fixed ${success}/${approvedLoans.length} approved loans`,
+              total: approvedLoans.length,
+              success: success
+            });
+          }
+        }
+      );
+    });
+  });
+};
+
+// Simple test endpoint
+module.exports.simpleTest = (req, res) => {
+  console.log("🧪 Simple test endpoint called");
+
+  try {
+    // Test database connection
+    DB.query("SELECT 1 as test", (error, result) => {
+      if (error) {
+        console.error("❌ Database test failed:", error);
+        return res.status(500).json({
+          message: "Database test failed",
+          error: error.message
+        });
+      }
+
+      console.log("✅ Database test passed");
+
+      // Check for approved loans
+      DB.query(
+        "SELECT COUNT(*) as count FROM loan_application WHERE loan_status = 'approved'",
+        (countError, countResult) => {
+          if (countError) {
+            console.error("❌ Count query failed:", countError);
+            return res.status(500).json({
+              message: "Count query failed",
+              error: countError.message
+            });
+          }
+
+          const approvedCount = countResult[0].count;
+          console.log("📊 Found approved loans:", approvedCount);
+
+          return res.status(200).json({
+            message: "Simple test completed successfully",
+            database_connection: "OK",
+            approved_loans_count: approvedCount,
+            timestamp: new Date().toISOString()
+          });
+        }
+      );
+    });
+  } catch (error) {
+    console.error("❌ Unexpected error in simpleTest:", error);
+    return res.status(500).json({
+      message: "Unexpected error",
+      error: error.message
+    });
+  }
+};
+
+// Test function to manually disburse approved loans
+module.exports.testDisbursement = (req, res) => {
+  console.log("🧪 Testing disbursement process...");
+
+  try {
+    // Get all approved loans that haven't been disbursed
+    DB.query(
+      "SELECT * FROM loan_application WHERE loan_status = 'approved'",
+      (error, applications) => {
+        if (error) {
+          console.error("❌ Error fetching approved applications:", error);
+          console.error("❌ SQL Error details:", error.sqlMessage);
+          return res.status(500).json({
+            message: "Database query failed",
+            error: error.message,
+            sqlError: error.sqlMessage
+          });
+        }
+
+        console.log("📋 Found approved applications:", applications.length);
+        console.log("📋 Applications data:", applications);
+
+        if (applications.length === 0) {
+          return res.status(200).json({
+            message: "No approved applications found",
+            count: 0
+          });
+        }
+
+      // Process each approved application
+      let processed = 0;
+      let errors = [];
+
+      applications.forEach((application, index) => {
+        console.log(`🔄 Processing application ${index + 1}/${applications.length}:`, application.loan_application_id);
+
+        const loanTerm = application.loan_term || 12;
+        const monthlyInstallment = application.monthly_installment || 0;
+        const totalAmount = application.total_amount || application.loan_amount;
+        const remainingBalance = totalAmount;
+
+        // Create loan entry with simplified columns
+        const disbursementDate = new Date().toISOString().split('T')[0];
+        const dueDate = getDueDate(loanTerm);
+        const nextPaymentDate = getNextPaymentDate();
+
+        console.log("💰 Creating loan with simplified data:", {
+          user_id: application.user_id,
+          amount_disbursed: application.loan_amount,
+          loan_term: loanTerm,
+          disbursement_date: disbursementDate
+        });
+
+        DB.query(
+          "INSERT INTO loans (user_id, amount_disbursed, loan_repayment, remaining_balance, status, disbursement_date) VALUES (?,?,?,?,?,?)",
+          [
+            application.user_id,
+            application.loan_amount,
+            0, // Initial repayment
+            application.loan_amount, // Remaining balance = full amount initially
+            'active',
+            disbursementDate
+          ],
+          (loanError, loanResult) => {
+            if (loanError) {
+              console.error(`❌ Error creating loan for application ${application.loan_application_id}:`, loanError);
+              errors.push({ application_id: application.loan_application_id, error: loanError.message });
+            } else {
+              console.log(`✅ Loan created for application ${application.loan_application_id}, loan ID:`, loanResult.insertId);
+
+              // Update application status to disbursed
+              DB.query(
+                "UPDATE loan_application SET loan_status = 'disbursed' WHERE loan_application_id = ?",
+                [application.loan_application_id],
+                (updateError) => {
+                  if (updateError) {
+                    console.error(`⚠️ Error updating application ${application.loan_application_id} status:`, updateError);
+                  } else {
+                    console.log(`✅ Application ${application.loan_application_id} status updated to disbursed`);
+                  }
+                }
+              );
+            }
+
+            processed++;
+
+            // Send response when all are processed
+            if (processed === applications.length) {
+              res.status(200).json({
+                message: "Disbursement test completed",
+                total_applications: applications.length,
+                errors: errors,
+                success_count: applications.length - errors.length
+              });
+            }
+          }
+        );
+      });
+    }
+  );
+  } catch (error) {
+    console.error("❌ Unexpected error in testDisbursement:", error);
+    return res.status(500).json({
+      message: "Unexpected error occurred",
+      error: error.message
+    });
+  }
+};
